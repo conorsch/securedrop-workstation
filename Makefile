@@ -75,10 +75,10 @@ remove-sd-export: assert-dom0 ## Destroys SD EXPORT VMs
 	@./scripts/destroy-vm sd-export-usb
 	@./scripts/destroy-vm sd-export-usb-dvm
 
-clean: assert-dom0 destroy-all clean-salt ## Destroys all SD VMs
+clean: assert-dom0 ## Destroys all SD VMs
+	sudo test ! -f /srv/salt/sd-clean-all.sls || sudo qubesctl --show-output state.sls sd-clean-all
 	sudo dnf -y -q remove securedrop-workstation-dom0-config 2>/dev/null || true
-	sudo rm -f /usr/bin/securedrop-update \
-		/etc/cron.daily/securedrop-update-cron
+	$(MAKE) clean-salt
 
 test: assert-dom0 ## Runs all application tests (no integration tests yet)
 	python3 -m unittest discover -v tests
