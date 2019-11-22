@@ -13,16 +13,6 @@ echo "Configure Fedora-based system VMs"
 sudo qubesctl --show-output --targets dom0 state.sls sd-sys-vms
 sudo qubesctl --show-output --skip-dom0 --targets sys-firewall state.sls sd-sys-firewall-files
 
-echo "Create base Template to be used by others"
-sudo qubesctl --show-output --targets dom0 state.sls sd-workstation-template
-
-echo "Configure packages inside base Template"
-sudo qubesctl --show-output --skip-dom0 --targets securedrop-workstation state.sls sd-workstation-template-files
-
-echo "Set up dom0 config files, including RPC policies, and create VMs"
-# The dom0 config runs implicitly via qubesctl (unless `--skip-dom0` is passed), so the VM
-# creation logic will be run before the states adding files inside the VMs.
-#sudo qubesctl --show-output --targets dom0 state.highstate
 echo "Provision all SecureDrop Workstation VMs with service-specific configs"
 # The max concurrency reduction (4->2) was required to avoid "did not return clean data"
 # errors from qubesctl. It may be possible to raise this again.
