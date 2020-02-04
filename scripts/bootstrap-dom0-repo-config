@@ -1,0 +1,108 @@
+#!/usr/bin/env python3
+"""
+Utility to script to configure the SecureDrop Workstation setup,
+specifically the dom0 package repositories, for initial install.
+Handles importing repo pubkey and URL endpoints.
+"""
+import json
+import os
+import subprocess
+import sys
+import yaml
+
+try:
+    from subprocess import DEVNULL
+except ImportError:
+    DEVNULL = open(os.devnull, 'wb')
+
+
+if os.geteuid() != 0:
+    print("ERROR: This script must be run as root")
+    sys.exit(1)
+
+
+dom0_yum_repo_config_template = """
+[securedrop-workstation-dom0]
+gpgcheck=1
+gpgkey=file://{}
+enabled=1
+baseurl={}
+name=SecureDrop Workstation Qubes dom0 repo
+"""
+
+
+def get_sdw_environment():
+    with open("config.json", "r") as f:
+        j = json.load(f)
+    # default to prod
+    sdw_env = j.get("environment", "prod")
+    return sdw_env
+
+
+def get_sdw_config():
+    sdw_env = get_sdw_environment()
+    with open("dom0/sd-default-config.yml", "r") as f:
+        y = yaml.load(f)
+    sdw_config = y[sdw_env]
+    return sdw_config
+
+
+def configure_dom0_for_sdw():
+    # Import config from JSON/YAML files
+    sdw_config = get_sdw_config()
+    pubkey_src = "sd-workstation/{}".format(sdw_config["signing_key_filename"])
+    pubkey_dest = "/etc/pki/rpm-gpg/RPM-GPG-KEY-securedrop-workstation"
+    yum_repo_url = sdw_config["dom0_yum_repo_url"]
+    dom0_yum_repo_config = dom0_yum_repo_config_template.format(pubkey_dest, yum_repo_url)
+
+    # Copy repo pubkey to dom0
+    subprocess.check_call(["cp", pubkey_src, pubkey_dest])
+
+    # Import repo pubkey so dom0 can verify packages
+    subprocess.check_call(["rpm", "--import", pubkey_dest])
+
+    # Copy the pubkey to sys-firewall. The Popen/check_call syntax below
+    # is Python equivalent of bash:
+    # cat "$prod_pubkey" | qvm-run -p sys-firewall "cat - > '$prod_pubkey_dest'"
+    ps = subprocess.Popen(["cat", pubkey_src], stdout=subprocess.PIPE)
+    subprocess.check_call([
+        "qvm-run",
+        "--pass-io",
+        "sys-firewall",
+        "sudo tee {}".format(pubkey_dest)],
+        stdin=ps.stdout,
+        stdout=DEVNULL,
+    )
+    ps.wait()
+
+    # Import repo pubkey on sys-firewall, so initial package downloads are verified,
+    # before passing to dom0
+    subprocess.check_call(["qvm-run", "--quiet", "sys-firewall",
+                           "sudo rpm --import {}".format(pubkey_dest)])
+
+    # Writing to this file is the only reason we need elevated privileges
+    # for this script (the subprocess calls can prefix 'sudo').
+    with open("/etc/yum.repos.d/securedrop-workstation-dom0.repo", "w") as f:
+        f.write(dom0_yum_repo_config)
+
+
+def display_instructions():
+    msg = """
+SecureDrop Workstation initialization complete.
+Run the following command in dom0:
+
+    sudo qubes-dom0-update -y securedrop-workstation-dom0-config
+
+Then run:
+
+    securedrop-admin configure
+    securedrop-admin install
+
+to complete the installation.
+"""
+    print(msg)
+
+
+if __name__ == "__main__":
+    configure_dom0_for_sdw()
+    display_instructions()
