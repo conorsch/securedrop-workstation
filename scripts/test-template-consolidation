@@ -1,0 +1,25 @@
+#!/bin/bash
+set -e
+set -u
+set -o pipefail
+set -x
+
+
+
+sudo dnf clean all
+make clean
+qvm-run sd-dev "git -C /home/user/securedrop-workstation checkout main"
+make clone
+sudo dnf clean all
+make prep-dev
+time make dev
+
+echo "DONE WITH DEFAULT"
+qvm-run sd-dev "git -C /home/user/securedrop-workstation checkout 608-import-export-security-updater-flag"
+echo "CONVERTING TO TEMPLATE CONSOLIDATION BRANCH"
+sudo dnf clean all
+make clone
+make prep-dev
+echo "RUNNING UPDATER FOR MIGRATION"
+
+/opt/securedrop/launcher/sdw-launcher.py --skip-delta 0
